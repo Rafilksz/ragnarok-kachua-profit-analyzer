@@ -24,6 +24,7 @@ from src.url_builder import build_market_price_url, build_trading_url
 DEFAULT_DROPS_PATH = Path("data/drops.txt")
 DEBUG_DIR = Path("data/debug")
 MAX_DROP_ITEMS_ONLINE = 60
+REQUEST_DELAY_SECONDS = 1.0
 
 
 def decimal_from_input(value: str) -> Decimal:
@@ -258,12 +259,6 @@ with st.sidebar:
         value=1000,
         step=100,
     )
-    delay_seconds = st.number_input(
-        "Delay entre buscas",
-        min_value=0.0,
-        value=1.0,
-        step=0.1,
-    )
     save_debug_html = st.checkbox("Salvar HTML em data/debug", value=False)
 
     best_package = calculate_best_joycoin_package()
@@ -309,7 +304,7 @@ if st.button("Buscar GNJOY e analisar", type="primary"):
     result_df, summary_df, debug_logs = analyze_online(
         drops=drops,
         server=server,
-        delay_seconds=delay_seconds,
+        delay_seconds=REQUEST_DELAY_SECONDS,
         save_debug_html=save_debug_html,
         max_artifacts=max_artifacts,
         zeny_per_real=zeny_per_real,
