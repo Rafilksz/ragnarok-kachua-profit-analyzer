@@ -11,10 +11,12 @@ from src.gnjoy_client import GnjoyClient
 from src.html_parser import lowest_offer_price, parse_market_history, parse_trading_offers
 from src.kachua_rewards import (
     DEFAULT_KACHUA_REWARDS,
+    KachuaRewardQuote,
     calculate_coupon_count,
     calculate_redeemable_quantity,
     calculate_reward_total_zeny,
     is_kachua_coupon,
+    optimize_kachua_redemptions,
 )
 from src.parser import parse_drop_text
 from src.profit_calculator import (
@@ -79,6 +81,7 @@ def analyze_online(
     logs: list[str] = []
     table_rows: list[dict[str, object]] = []
     reward_rows: list[dict[str, object]] = []
+    reward_quotes: list[KachuaRewardQuote] = []
     prices_by_search_name: dict[str, int] = {}
     random_drops = [item for item in drops if not is_kachua_coupon(item)]
     coupon_count = calculate_coupon_count(drops, max_artifacts)
@@ -276,16 +279,39 @@ def analyze_online(
                     "URL trading BUY": trading_url,
                 }
             )
+            reward_quotes.append(
+                KachuaRewardQuote(
+                    reward=reward,
+                    unit_price_zeny=buy_fast_price,
+                )
+            )
 
-        best_reward_row = max(
-            reward_rows,
-            key=lambda row: row["Total BUY FAST zeny"],
-            default=None,
+        redemptions, remaining_coupons = optimize_kachua_redemptions(
+            coupon_count,
+            reward_quotes,
         )
-        coupon_sale_zeny = (
-            Decimal(best_reward_row["Total BUY FAST zeny"])
-            if best_reward_row is not None
-            else Decimal("0")
+        redemption_rows: list[dict[str, object]] = []
+        running_remaining_coupons = coupon_count
+
+        for index, redemption in enumerate(redemptions, start=1):
+            running_remaining_coupons -= redemption.spent_coupons
+            redemption_rows.append(
+                {
+                    "Ordem": index,
+                    "Item de Cupom": redemption.reward.item_name,
+                    "Cupons por item": redemption.reward.coupon_cost,
+                    "Quantidade comprar": redemption.quantity,
+                    "Cupons gastos": redemption.spent_coupons,
+                    "Cupons restantes": running_remaining_coupons,
+                    "Valor unitario BUY FAST": redemption.unit_price_zeny,
+                    "Zeny por cupom": redemption.zeny_per_coupon,
+                    "Total zeny": redemption.total_zeny,
+                }
+            )
+
+        coupon_sale_zeny = sum(
+            (redemption.total_zeny for redemption in redemptions),
+            Decimal("0"),
         )
         coupon_value_zeny_per_artifact = coupon_sale_zeny / Decimal(max_artifacts)
         expected_value_zeny_per_box = (
@@ -354,11 +380,15 @@ def analyze_online(
             {"Metrica": "Lucro esperado total", "Valor": format_brl(total_profit_brl)},
             {"Metrica": "ROI", "Valor": f"{float(roi_percent):.2f}%"},
             {
-                "Metrica": "Melhor item para Cupom da Kachua",
-                "Valor": best_reward_row["Item de Cupom"] if best_reward_row else "-",
+                "Metrica": "Total de Cupons da Kachua",
+                "Valor": format_zeny(coupon_count),
             },
             {
-                "Metrica": "Zeny do melhor resgate de cupons",
+                "Metrica": "Cupons restantes apos resgate",
+                "Valor": format_zeny(remaining_coupons),
+            },
+            {
+                "Metrica": "Zeny do plano de resgate dos cupons",
                 "Valor": format_zeny(coupon_sale_zeny),
             },
             {
@@ -392,6 +422,7 @@ def analyze_online(
             by="Total BUY FAST zeny",
             ascending=False,
         )
+        st.session_state["coupon_redemption_df"] = pd.DataFrame(redemption_rows)
         return pd.DataFrame(table_rows), pd.DataFrame(summary_rows), logs
     finally:
         client.close()
@@ -479,6 +510,7 @@ if st.button("Buscar GNJOY e analisar", type="primary"):
     metrics = st.session_state["metrics"]
     simulation_df = st.session_state["simulation_df"]
     coupon_rewards_df = st.session_state["coupon_rewards_df"]
+    coupon_redemption_df = st.session_state["coupon_redemption_df"]
     final_simulation_row = simulation_df.iloc[-1]
 
     metric_columns = st.columns(6)
@@ -501,6 +533,10 @@ if st.button("Buscar GNJOY e analisar", type="primary"):
     st.dataframe(result_df, use_container_width=True, hide_index=True)
 
     st.subheader("Cupons da Kachua")
+    st.caption("Plano otimizado: compra os itens com melhor zeny por cupom ate sobrar menos que o minimo compravel.")
+    st.dataframe(coupon_redemption_df, use_container_width=True, hide_index=True)
+
+    st.subheader("Valores dos itens de Cupom da Kachua")
     st.dataframe(coupon_rewards_df, use_container_width=True, hide_index=True)
 
     st.subheader("Simulacao de lucro")
