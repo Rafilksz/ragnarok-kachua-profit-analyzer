@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import re
+import unicodedata
 
 from bs4 import BeautifulSoup, Tag
 
@@ -8,7 +9,11 @@ from src.models import MarketHistory, TradingOffer
 
 
 def normalize_for_compare(text: str) -> str:
-    return " ".join(text.casefold().split())
+    normalized = unicodedata.normalize("NFKD", text)
+    without_accents = "".join(
+        character for character in normalized if not unicodedata.combining(character)
+    )
+    return " ".join(without_accents.casefold().split())
 
 
 def is_exact_item_match(site_name: str, searched_name: str) -> bool:

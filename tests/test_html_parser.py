@@ -1,4 +1,5 @@
 from src.html_parser import (
+    is_exact_item_match,
     lowest_offer_price,
     parse_market_history,
     parse_trading_offers,
@@ -33,6 +34,11 @@ def test_parse_market_history_rejects_similar_item_name() -> None:
     history = parse_market_history(html, "Oridecon")
 
     assert history.has_history is False
+
+
+def test_exact_item_match_ignores_accents_but_not_words() -> None:
+    assert is_exact_item_match("Máscara Azulada", "Mascara Azulada") is True
+    assert is_exact_item_match("Minério de Oridecon", "Oridecon") is False
 
 
 def test_parse_trading_offers_and_lowest_price() -> None:

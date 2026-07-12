@@ -9,6 +9,13 @@ import streamlit as st
 
 from src.gnjoy_client import GnjoyClient
 from src.html_parser import lowest_offer_price, parse_market_history, parse_trading_offers
+from src.kachua_rewards import (
+    DEFAULT_KACHUA_REWARDS,
+    calculate_coupon_count,
+    calculate_redeemable_quantity,
+    calculate_reward_total_zeny,
+    is_kachua_coupon,
+)
 from src.parser import parse_drop_text
 from src.profit_calculator import (
     calculate_buy_fast_price,
@@ -16,6 +23,7 @@ from src.profit_calculator import (
     calculate_zeny_per_real,
     price_drop_items,
     probability_to_rate,
+    simulate_profit,
     summarize_profit,
 )
 from src.url_builder import build_market_price_url, build_trading_url
@@ -70,7 +78,10 @@ def analyze_online(
 ) -> tuple[pd.DataFrame, pd.DataFrame, list[str]]:
     logs: list[str] = []
     table_rows: list[dict[str, object]] = []
+    reward_rows: list[dict[str, object]] = []
     prices_by_search_name: dict[str, int] = {}
+    random_drops = [item for item in drops if not is_kachua_coupon(item)]
+    coupon_count = calculate_coupon_count(drops, max_artifacts)
     progress = st.progress(0)
 
     def logger(message: str) -> None:
@@ -83,10 +94,10 @@ def analyze_online(
     )
 
     try:
-        total_steps = len(drops) * 2
+        total_steps = (len(random_drops) + len(DEFAULT_KACHUA_REWARDS)) * 2
         finished_steps = 0
 
-        for item in drops:
+        for item in random_drops:
             append_log(logs, f"ITEM: {item.original_name} -> {item.search_name}", log_box)
 
             market_url = build_market_price_url(item.search_name, server=server)
@@ -159,12 +170,12 @@ def analyze_online(
             )
 
         priced_items = price_drop_items(
-            items=drops,
+            items=random_drops,
             prices_by_search_name=prices_by_search_name,
             zeny_per_real=zeny_per_real,
             artifact_quantity_for_chance=max_artifacts,
         )
-        summary, simulation = summarize_profit(
+        drop_summary, _drop_simulation = summarize_profit(
             priced_items=priced_items,
             artifact_cost_brl=calculate_best_joycoin_package().artifact_cost_brl,
             zeny_per_real=zeny_per_real,
@@ -176,17 +187,153 @@ def analyze_online(
             row["EV BRL por ovo"] = priced.expected_value_brl_per_box
             row[f"Chance >=1 em {max_artifacts}"] = priced.accumulated_chance_percent
 
-        sale_zeny = summary.expected_value_zeny_per_box * Decimal(max_artifacts)
+        for reward in DEFAULT_KACHUA_REWARDS:
+            append_log(
+                logs,
+                f"CUPOM: {coupon_count} Cupom da Kachua -> {reward.item_name} "
+                f"({reward.coupon_cost} cupons cada)",
+                log_box,
+            )
+
+            market_url = build_market_price_url(reward.item_name, server=server)
+            market_result = client.get(
+                market_url,
+                cache_name=safe_cache_name(reward.item_name, "coupon_market_price"),
+            )
+            finished_steps += 1
+            progress.progress(finished_steps / total_steps)
+            market_history = parse_market_history(market_result.html, reward.item_name)
+            append_log(
+                logs,
+                "COUPON MARKET PARSED: "
+                f"has_history={market_history.has_history} "
+                f"min={market_history.minimum_price} "
+                f"avg={market_history.average_price} "
+                f"max={market_history.maximum_price} "
+                f"volume={market_history.volume}",
+                log_box,
+            )
+
+            trading_url = build_trading_url(reward.item_name, "BUY", server=server)
+            trading_result = client.get(
+                trading_url,
+                cache_name=safe_cache_name(reward.item_name, "coupon_trading_BUY"),
+            )
+            finished_steps += 1
+            progress.progress(finished_steps / total_steps)
+            buy_offers = parse_trading_offers(
+                trading_result.html,
+                reward.item_name,
+                "BUY",
+            )
+            current_price = lowest_offer_price(buy_offers)
+            buy_fast_price = calculate_buy_fast_price(current_price)
+            redeemable_quantity = calculate_redeemable_quantity(
+                coupon_count,
+                reward.coupon_cost,
+            )
+            used_coupons = redeemable_quantity * reward.coupon_cost
+            total_buy_fast_zeny = calculate_reward_total_zeny(
+                coupon_count,
+                reward.coupon_cost,
+                buy_fast_price,
+            )
+            total_average_zeny = calculate_reward_total_zeny(
+                coupon_count,
+                reward.coupon_cost,
+                market_history.average_price,
+            )
+            append_log(
+                logs,
+                "COUPON TRADING BUY PARSED: "
+                f"offers={len(buy_offers)} "
+                f"lowest_price={current_price} "
+                f"buy_fast_price={buy_fast_price} "
+                f"redeemable={redeemable_quantity} "
+                f"total_buy_fast_zeny={int(total_buy_fast_zeny)} "
+                f"all_prices={[offer.price for offer in buy_offers]}",
+                log_box,
+            )
+
+            reward_rows.append(
+                {
+                    "Cupons Kachua": coupon_count,
+                    "Item de Cupom": reward.item_name,
+                    "Cupons por item": reward.coupon_cost,
+                    "Quantidade compravel": redeemable_quantity,
+                    "Cupons usados": used_coupons,
+                    "Cupons sobrando": coupon_count - used_coupons,
+                    "Valor min": market_history.minimum_price,
+                    "Valor max": market_history.maximum_price,
+                    "Valor medio": market_history.average_price,
+                    "Volume historico": market_history.volume,
+                    "Valor atual BUY": current_price,
+                    "Valor BUY FAST (-2%)": buy_fast_price,
+                    "Total BUY FAST zeny": total_buy_fast_zeny,
+                    "Total media zeny": total_average_zeny,
+                    "Trading BUY retornos": len(buy_offers),
+                    "URL market-price": market_url,
+                    "URL trading BUY": trading_url,
+                }
+            )
+
+        best_reward_row = max(
+            reward_rows,
+            key=lambda row: row["Total BUY FAST zeny"],
+            default=None,
+        )
+        coupon_sale_zeny = (
+            Decimal(best_reward_row["Total BUY FAST zeny"])
+            if best_reward_row is not None
+            else Decimal("0")
+        )
+        coupon_value_zeny_per_artifact = coupon_sale_zeny / Decimal(max_artifacts)
+        expected_value_zeny_per_box = (
+            drop_summary.expected_value_zeny_per_box + coupon_value_zeny_per_artifact
+        )
+        simulation = simulate_profit(
+            max_artifacts=max_artifacts,
+            artifact_cost_brl=drop_summary.artifact_cost_brl,
+            expected_value_zeny_per_box=expected_value_zeny_per_box,
+            zeny_per_real=zeny_per_real,
+        )
+        first_profitable_quantity = next(
+            (
+                row.artifact_quantity
+                for row in simulation
+                if row.expected_profit_brl > Decimal("0")
+            ),
+            None,
+        )
+        sale_zeny = expected_value_zeny_per_box * Decimal(max_artifacts)
         sale_brl = sale_zeny / zeny_per_real
-        total_cost_brl = summary.artifact_cost_brl * Decimal(max_artifacts)
+        total_cost_brl = drop_summary.artifact_cost_brl * Decimal(max_artifacts)
         total_profit_brl = sale_brl - total_cost_brl
+        expected_value_brl_per_box = expected_value_zeny_per_box / zeny_per_real
+        expected_profit_brl_per_box = (
+            expected_value_brl_per_box - drop_summary.artifact_cost_brl
+        )
+        roi_percent = (
+            (expected_profit_brl_per_box / drop_summary.artifact_cost_brl)
+            * Decimal("100")
+            if drop_summary.artifact_cost_brl > 0
+            else Decimal("0")
+        )
 
         summary_rows = [
-            {"Metrica": "Custo por Artefato", "Valor": format_brl(summary.artifact_cost_brl)},
+            {"Metrica": "Custo por Artefato", "Valor": format_brl(drop_summary.artifact_cost_brl)},
             {"Metrica": "Custo total", "Valor": format_brl(total_cost_brl)},
             {
-                "Metrica": "EV zeny por Artefato",
-                "Valor": format_zeny(summary.expected_value_zeny_per_box),
+                "Metrica": "EV zeny por Artefato (drops)",
+                "Valor": format_zeny(drop_summary.expected_value_zeny_per_box),
+            },
+            {
+                "Metrica": "EV zeny por Artefato (melhor cupom)",
+                "Valor": format_zeny(coupon_value_zeny_per_artifact),
+            },
+            {
+                "Metrica": "EV zeny por Artefato total",
+                "Valor": format_zeny(expected_value_zeny_per_box),
             },
             {
                 "Metrica": f"Zeny da venda em {max_artifacts} Artefatos",
@@ -198,17 +345,25 @@ def analyze_online(
             },
             {
                 "Metrica": "EV BRL por Artefato",
-                "Valor": format_brl(summary.expected_value_brl_per_box),
+                "Valor": format_brl(expected_value_brl_per_box),
             },
             {
                 "Metrica": "Lucro esperado por Artefato",
-                "Valor": format_brl(summary.expected_profit_brl_per_box),
+                "Valor": format_brl(expected_profit_brl_per_box),
             },
             {"Metrica": "Lucro esperado total", "Valor": format_brl(total_profit_brl)},
-            {"Metrica": "ROI", "Valor": f"{float(summary.roi_percent):.2f}%"},
+            {"Metrica": "ROI", "Valor": f"{float(roi_percent):.2f}%"},
+            {
+                "Metrica": "Melhor item para Cupom da Kachua",
+                "Valor": best_reward_row["Item de Cupom"] if best_reward_row else "-",
+            },
+            {
+                "Metrica": "Zeny do melhor resgate de cupons",
+                "Valor": format_zeny(coupon_sale_zeny),
+            },
             {
                 "Metrica": "Primeira quantidade lucrativa",
-                "Valor": summary.first_profitable_quantity or "Nao lucrativo ate o limite",
+                "Valor": first_profitable_quantity or "Nao lucrativo ate o limite",
             },
         ]
 
@@ -225,8 +380,18 @@ def analyze_online(
             ]
         )
 
-        st.session_state["profit_summary"] = summary
+        st.session_state["metrics"] = {
+            "artifact_cost_brl": drop_summary.artifact_cost_brl,
+            "expected_value_zeny_per_box": expected_value_zeny_per_box,
+            "expected_value_brl_per_box": expected_value_brl_per_box,
+            "expected_profit_brl_per_box": expected_profit_brl_per_box,
+            "roi_percent": roi_percent,
+        }
         st.session_state["simulation_df"] = simulation_df
+        st.session_state["coupon_rewards_df"] = pd.DataFrame(reward_rows).sort_values(
+            by="Total BUY FAST zeny",
+            ascending=False,
+        )
         return pd.DataFrame(table_rows), pd.DataFrame(summary_rows), logs
     finally:
         client.close()
@@ -311,19 +476,20 @@ if st.button("Buscar GNJOY e analisar", type="primary"):
         log_box=log_box,
     )
 
-    summary = st.session_state["profit_summary"]
+    metrics = st.session_state["metrics"]
     simulation_df = st.session_state["simulation_df"]
+    coupon_rewards_df = st.session_state["coupon_rewards_df"]
     final_simulation_row = simulation_df.iloc[-1]
 
     metric_columns = st.columns(6)
-    metric_columns[0].metric("Custo por Artefato", format_brl(summary.artifact_cost_brl))
+    metric_columns[0].metric("Custo por Artefato", format_brl(metrics["artifact_cost_brl"]))
     metric_columns[1].metric("Custo total", format_brl(final_simulation_row["Custo BRL"]))
     metric_columns[2].metric("Zeny da venda", format_zeny(final_simulation_row["Retorno esperado zeny"]))
     metric_columns[3].metric("BRL da venda", format_brl(final_simulation_row["Retorno esperado BRL"]))
     metric_columns[4].metric("Lucro esperado", format_brl(final_simulation_row["Lucro esperado BRL"]))
-    metric_columns[5].metric("ROI", f"{float(summary.roi_percent):.2f}%")
+    metric_columns[5].metric("ROI", f"{float(metrics['roi_percent']):.2f}%")
 
-    if summary.expected_profit_brl_per_box > 0:
+    if metrics["expected_profit_brl_per_box"] > 0:
         st.success("Compensa estatisticamente com os valores atuais encontrados.")
     else:
         st.error("Nao compensa estatisticamente com os valores atuais encontrados.")
@@ -333,6 +499,9 @@ if st.button("Buscar GNJOY e analisar", type="primary"):
 
     st.subheader("Tabela por item")
     st.dataframe(result_df, use_container_width=True, hide_index=True)
+
+    st.subheader("Cupons da Kachua")
+    st.dataframe(coupon_rewards_df, use_container_width=True, hide_index=True)
 
     st.subheader("Simulacao de lucro")
     st.line_chart(simulation_df, x="Artefatos", y="Lucro esperado BRL")
