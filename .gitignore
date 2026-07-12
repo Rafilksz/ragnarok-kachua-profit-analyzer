@@ -1,0 +1,41 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# Local/editor state
+.vscode/
+.idea/
+.agents/
+.codex/
+
+# Environment and secrets
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.crt
+
+# Runtime logs
+*.log
+.streamlit-out.log
+.streamlit-err.log
+
+# Generated/debug data
+data/debug/
+data/*.xlsx
+!data/drops.txt
+!data/joycoin_packages.csv
+
+# OS files
+.DS_Store
+Thumbs.db

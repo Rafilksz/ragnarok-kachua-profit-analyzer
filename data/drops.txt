@@ -1,0 +1,43 @@
+Nome	Quantidade	Probabilidade
+Coroa de Belzebu [1]	1	0,0250%
+Botas Decadentes [1]	1	0,0250%
+Envelope de Alto Refino	1	0,0500%
+Martelo de Refino Vivatus	1	0,2250%
+Âmago Dimensional	1	0,2250%
+Martelo de Refino OSAD	1	0,3500%
+Familiar de Combate	1	0,3500%
+Drainiliar de Combate	1	0,3500%
+Caixa de Armas Primordiais	1	0,3500%
+Caixa de Elmos da Fé	1	0,4000%
+Caixa de Elmos da Fé II	1	0,4000%
+Comunicador Avançado	1	1,0000%
+Gálea Guerreira de Cinzas [1]	1	1,0000%
+Gálea Afiada de Cinzas [1]	1	1,0000%
+Gálea Mágica de Cinzas [1]	1	1,0000%
+Gálea Lutadora de Cinzas [1]	1	1,0000%
+Caixa de Fascículos Selecionáveis	1	1,0000%
+Cubo Sombrio do Chilique	1	1,5000%
+Cubo Sombrio de Gateira	1	1,5000%
+Caderno Perfeito	1	1,5000%
+Cubo Sombrio de Es	1	2,0000%
+Cubo Sombrio Kunoichi	1	2,0000%
+Cubo Sombrio Shinobi	1	2,0000%
+Cubo Sombrio de Expurgar	1	2,0000%
+Cubo Sombrio Lunar	1	2,5000%
+Cubo Sombrio Solar	1	2,5000%
+Bênção do Ferreiro (3)	1	3,0000%
+Encantador Sombrio	3	3,0000%
+Vale-Encanto	1	3,0000%
+Cubo Sombrio de Classe	1	3,0000%
+Caixa de Martelos Sombrios	1	3,0000%
+[Evento] Manual & Chiclete	1	4,7500%
+[Evento] Poção Menor de Mana	2	4,7500%
+[Evento] Poção Média de Vida	2	4,7500%
+Estimulante	2	4,7500%
+[Limitado] Amuleto de Siegfried	3	4,7500%
+[Evento] Bênção de Tyr	5	7,0000%
+Maleta de Produtos Químicos	2	7,0000%
+Porta Moedas	2	7,0000%
+Embalagem de Fragmentos	2	7,0000%
+Poção de Ouro	3	7,0000%
+Cupom da Kachua	1	100,0000%
