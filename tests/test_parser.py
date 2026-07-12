@@ -2,7 +2,13 @@ from decimal import Decimal
 
 import pytest
 
-from src.parser import clean_item_name, parse_drop_line, parse_drop_text, parse_probability
+from src.parser import (
+    clean_item_name,
+    is_non_tradeable_event_item,
+    parse_drop_line,
+    parse_drop_text,
+    parse_probability,
+)
 
 
 @pytest.mark.parametrize(
@@ -69,3 +75,15 @@ def test_parse_drop_text_ignores_header_and_blank_lines() -> None:
         "Gálea Afiada de Cinzas",
         "Poção Menor de Mana",
     ]
+
+
+@pytest.mark.parametrize(
+    ("name", "expected"),
+    [
+        ("[Evento] Manual & Chiclete", True),
+        ("[Limitado] Amuleto de Siegfried", True),
+        ("Poção de Ouro", False),
+    ],
+)
+def test_is_non_tradeable_event_item(name: str, expected: bool) -> None:
+    assert is_non_tradeable_event_item(name) is expected

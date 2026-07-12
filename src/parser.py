@@ -16,6 +16,11 @@ def clean_item_name(name: str) -> str:
     return " ".join(name_without_parentheses.split()).strip()
 
 
+def is_non_tradeable_event_item(name: str) -> bool:
+    normalized = name.casefold()
+    return "[evento]" in normalized or "[limitado]" in normalized
+
+
 def parse_probability(value: str) -> Decimal:
     normalized = value.strip().replace("%", "").replace(",", ".")
     return Decimal(normalized)

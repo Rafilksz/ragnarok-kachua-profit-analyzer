@@ -18,7 +18,7 @@ from src.kachua_rewards import (
     is_kachua_coupon,
     optimize_kachua_redemptions,
 )
-from src.parser import parse_drop_text
+from src.parser import is_non_tradeable_event_item, parse_drop_text
 from src.profit_calculator import (
     calculate_buy_fast_price,
     calculate_best_joycoin_package,
@@ -83,7 +83,16 @@ def analyze_online(
     reward_rows: list[dict[str, object]] = []
     reward_quotes: list[KachuaRewardQuote] = []
     prices_by_search_name: dict[str, int] = {}
-    random_drops = [item for item in drops if not is_kachua_coupon(item)]
+    random_drops = [
+        item
+        for item in drops
+        if not is_kachua_coupon(item) and not is_non_tradeable_event_item(item.original_name)
+    ]
+    non_tradeable_drops = [
+        item
+        for item in drops
+        if not is_kachua_coupon(item) and is_non_tradeable_event_item(item.original_name)
+    ]
     coupon_count = calculate_coupon_count(drops, max_artifacts)
     progress = st.progress(0)
 
@@ -99,6 +108,39 @@ def analyze_online(
     try:
         total_steps = (len(random_drops) + len(DEFAULT_KACHUA_REWARDS)) * 2
         finished_steps = 0
+
+        for item in non_tradeable_drops:
+            append_log(
+                logs,
+                f"ITEM NAO VENDAVEL: {item.original_name} -> sem busca GNJOY",
+                log_box,
+            )
+            expected_drop_quantity = (
+                Decimal(max_artifacts)
+                * Decimal(item.quantity)
+                * probability_to_rate(item.probability_percent)
+            )
+            table_rows.append(
+                {
+                    "Item name": item.original_name,
+                    "Nome busca": item.search_name,
+                    "Quantidade drop esperado": expected_drop_quantity,
+                    "Chance %": item.probability_percent,
+                    "Valor min": None,
+                    "Valor max": None,
+                    "Valor medio": None,
+                    "Volume historico": None,
+                    "Valor atual BUY": None,
+                    "Valor BUY FAST (-2%)": None,
+                    "Trading BUY retornos": 0,
+                    "URL market-price": "NAO BUSCADO",
+                    "URL trading BUY": "NAO BUSCADO",
+                    "Observacao": "Item [Evento]/[Limitado] nao vendavel",
+                    "EV zeny por ovo": Decimal("0"),
+                    "EV BRL por ovo": Decimal("0"),
+                    f"Chance >=1 em {max_artifacts}": Decimal("0"),
+                }
+            )
 
         for item in random_drops:
             append_log(logs, f"ITEM: {item.original_name} -> {item.search_name}", log_box)
@@ -169,6 +211,7 @@ def analyze_online(
                     "Trading BUY retornos": len(buy_offers),
                     "URL market-price": market_url,
                     "URL trading BUY": trading_url,
+                    "Observacao": "",
                 }
             )
 
@@ -185,7 +228,9 @@ def analyze_online(
             max_artifacts=max_artifacts,
         )
 
-        for row, priced in zip(table_rows, priced_items):
+        tradeable_row_start = len(non_tradeable_drops)
+
+        for row, priced in zip(table_rows[tradeable_row_start:], priced_items):
             row["EV zeny por ovo"] = priced.expected_value_zeny_per_box
             row["EV BRL por ovo"] = priced.expected_value_brl_per_box
             row[f"Chance >=1 em {max_artifacts}"] = priced.accumulated_chance_percent
